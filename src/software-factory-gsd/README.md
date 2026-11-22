@@ -158,17 +158,77 @@ reviewer blocks it, and the approver checks it.
 ## Phases GSD has already planned
 
 If `/gsd-plan-phase` ran before you installed the factory, the phase has
-`*-PLAN.md` files in `.planning/phases/`. What happens depends on how far GSD got:
+`*-PLAN.md` files in `.planning/phases/`. What to do depends on how far GSD got.
 
-| The phase is | `/factory from-gsd <phase>` | What to do |
+### Check where the phase is
+
+```bash
+factory/bin/gsd backlog <phase> --dry-run    # warns if planned, refuses if executed
+ls .planning/phases/<NN>-*/                  # PLAN.md without SUMMARY.md = not run yet
+```
+
+`/gsd-progress` shows the same thing from GSD's side.
+
+| The phase is | `/factory from-gsd <phase>` | Suggested |
 |---|---|---|
-| Planned, not executed | Warns, then queues it | Let the factory build it: the spec-writer reuses the plans (`factory/bin/gsd plans <ID>` finds them). Or run `/gsd-execute-phase` instead and queue the next phase. Not both. |
-| Partly or fully executed | Refuses | Finish it with `/gsd-execute-phase <phase>`, then queue the next phase. Its items wait on this phase's ticks, so they start once GSD is done. |
+| Not planned | Queues it | Let the factory build it. |
+| Planned, not executed | Warns, then queues it | Pick one system for the whole phase (see below). |
+| Partly executed | Refuses | Finish it with GSD, then queue the next phase. |
+| Fully executed | Refuses | Nothing to do: queue the next phase. |
 
-Don't split one phase between the two systems. GSD ticks a requirement only when
-every plan that lists it has run, so a half-executed phase leaves requirements
-unticked that the factory would rebuild. `--force` overrides the refusal if you
-know better.
+### Planned, not executed: pick one system
+
+**Let GSD finish it** (`/gsd-execute-phase <phase>`, then
+`/factory from-gsd <next phase>`) when:
+
+- you reviewed the plans and they are recent, so the planning isn't wasted;
+- the plans are tightly coupled (several waves touching the same files), which
+  GSD runs as one unit but the factory would split into separate branches;
+- the plans contain checkpoints that need you, which GSD asks you about as it goes.
+
+You also keep GSD's own end-of-phase check: `/gsd-verify-work` works, because
+GSD's executor writes the `SUMMARY.md` files it reads. The next phase's items wait
+on this phase's ticks, so the factory starts on them as soon as GSD is done.
+
+**Give it to the factory** (`/factory from-gsd <phase>`, and never run
+`/gsd-execute-phase` on it) when:
+
+- you want every requirement to go through the four reviewers and the approver
+  before it reaches `main`;
+- you want to build several requirements of the phase in parallel;
+- the code has moved since the plans were written.
+
+The spec-writer reuses the plans as a head start (`factory/bin/gsd plans <ID>`
+finds them) and checks them against the current code. The cost: `/gsd-progress`
+keeps showing the phase as planned with 0 plans done, since the factory writes no
+`SUMMARY.md`. That's cosmetic; `REQUIREMENTS.md` shows the real progress.
+
+**Not both.** Running `/gsd-execute-phase` on a phase the factory is building
+makes both systems build the same requirements.
+
+### Partly executed: finish it with GSD
+
+1. `/gsd-execute-phase <phase>` resumes the plans that haven't run.
+2. `factory/bin/gsd backlog <phase> --dry-run` should now print nothing to
+   queue: GSD ticks each requirement once every plan that lists it has run.
+3. `/factory from-gsd <next phase>`.
+
+Don't split one phase between the two systems. A requirement shared by a plan
+that ran and one that didn't is still unticked, so the factory would rebuild work
+that is half done.
+
+If a requirement is still unticked after GSD has run every plan, GSD missed
+something. Either close the gap in GSD (`/gsd-verify-work <phase>` records it,
+then `/gsd-plan-phase <phase> --gaps` plans the fix), or hand the leftovers to
+the factory with
+`factory/bin/gsd backlog <phase> --force`. The spec-writer sees the executed
+plans and specs only what is still missing.
+
+### The rule
+
+Whatever GSD has planned is finished by one system, as a whole phase. The only
+handoff between GSD and the factory is the ticks in `REQUIREMENTS.md`, so you can
+switch systems at any phase boundary.
 
 ## Things to know
 
@@ -180,7 +240,6 @@ know better.
   write them. Each job is checked by its reviewers and the approver instead.
 - **Requirements need checkboxes.** `factory/bin/gsd` reads `- [ ] **ID**: ...`
   lines. GSD's v2 (deferred) requirements have no checkbox, so they're never queued.
-
 - **`.planning/` must be committed.** With GSD's `commit_docs: false`,
   `.planning/` is gitignored, job worktrees can't see it, and the factory
   refuses to start the job. Keep the default `commit_docs: true`.
