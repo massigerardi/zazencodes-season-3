@@ -237,15 +237,20 @@ Queue a ROADMAP phase in `factory/backlog.md`.
 1. Preview it: `factory/bin/gsd backlog <phase> --dry-run`. It prints one line
    per unticked requirement of the phase, already waiting on the unticked
    requirements of the phases this one depends on. If it fails, pass its message
-   on (no `.planning/`: the user runs `/gsd-new-project` first) and stop.
+   on and stop. No `.planning/`: the user runs `/gsd-new-project` first. A phase
+   GSD has started executing: the user finishes it with `/gsd-execute-phase`;
+   add `--force` to both runs only when the user explicitly asks for it.
+   If it warns that GSD has planned the phase, keep going: the spec-writer
+   reuses those plans. Pass the warning on in step 3.
 2. Requirements of one phase run in parallel by default. Read them, with the
    phase's goal and success criteria in `.planning/ROADMAP.md`, and look for one
    that can't be built until another in the same phase is merged (password reset
    needs sign-up to exist). Add only clear cases, each as
    `--after <ID>=<ID>[,<ID>...]`.
 3. Queue it: `factory/bin/gsd backlog <phase> [--after ...]`. Tell the user what
-   was queued, which items can start now, and that `.planning/` must be
-   committed on `main` before jobs start. Then stop: queuing doesn't start a job.
+   was queued, which items can start now, any warning it printed, and that
+   `.planning/` (plans included) must be committed on `main` before jobs start.
+   Then stop: queuing doesn't start a job.
 
 ## /factory next
 

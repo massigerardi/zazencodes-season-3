@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Bridge between GSD's .planning/ files and the factory backlog.
 
-  gsd backlog <phase> [--after ID=ID[,ID...]]... [--dry-run]
+  gsd backlog <phase> [--after ID=ID[,ID...]]... [--dry-run] [--force]
       Queue every unticked requirement of a ROADMAP phase in factory/backlog.md,
       one line per requirement ID. Items wait for the unticked requirements of the
-      phases this one depends on; --after adds same-phase dependencies.
+      phases this one depends on; --after adds same-phase dependencies. Warns when
+      GSD has planned the phase, and refuses (unless --force) when GSD has started
+      executing it.
   gsd next
       Print the first unchecked backlog item whose dependencies are all ticked, as
       JSON {"line", "feature", "requirement"}. Exit 3 if every item is blocked,
@@ -12,6 +14,9 @@
   gsd tick <ID>
       Tick a requirement in .planning/REQUIREMENTS.md and mark its traceability
       row Complete. Says so when that completes its phase.
+  gsd plans <ID>
+      List the GSD PLAN.md files whose frontmatter `requirements:` names the ID,
+      one path per line, with " (executed)" when the plan has a SUMMARY.md.
 
 A requirement is done when it is ticked in REQUIREMENTS.md. Run from the main
 checkout; paths resolve against its git root.
@@ -110,6 +115,39 @@ def field(block, name):
     return None
 
 
+def phase_dirs(base, phase):
+    d = base / ".planning/phases"
+    if not d.is_dir():
+        return []
+    return [sub for sub in sorted(d.iterdir())
+            if sub.is_dir() and (m := re.match(r"(\d+(?:\.\d+)*)-", sub.name))
+            and norm_phase(m.group(1)) == phase]
+
+
+def summary_of(plan):
+    return plan.with_name(plan.name[:-len("PLAN.md")] + "SUMMARY.md")
+
+
+def plan_requirements(path):
+    """Requirement IDs in a PLAN.md frontmatter `requirements:` field, inline or as a list."""
+    lines = path.read_text().splitlines()
+    if not lines or lines[0].strip() != "---":
+        return []
+    ids, grab = [], False
+    for line in lines[1:]:
+        if line.strip() == "---":
+            break
+        line = line.split("#", 1)[0]
+        if re.match(r"^requirements\s*:", line):
+            ids += re.findall(ID, line.split(":", 1)[1])
+            grab = True
+        elif grab and re.match(r"^\s+-\s", line):
+            ids += re.findall(ID, line)
+        else:
+            grab = False
+    return ids
+
+
 def backlog_items(lines):
     for line in lines:
         m = ITEM.match(line)
@@ -125,12 +163,14 @@ def item_after(text):
 def cmd_backlog(args):
     if not args:
         die("usage: gsd backlog <phase> [--after ID=ID[,ID...]]... [--dry-run]")
-    phase, extra, dry = norm_phase(args[0]), {}, False
+    phase, extra, dry, force = norm_phase(args[0]), {}, False, False
     rest = args[1:]
     while rest:
         a = rest.pop(0)
         if a == "--dry-run":
             dry = True
+        elif a == "--force":
+            force = True
         elif a == "--after" and rest:
             key, _, val = rest.pop(0).partition("=")
             if not re.fullmatch(ID, key) or not val:
@@ -154,6 +194,22 @@ def cmd_backlog(args):
         bad = [v for v in vals if v not in reqs]
         if bad:
             die(f"--after {key}: unknown requirements {', '.join(bad)}")
+
+    plans = [pl for d in phase_dirs(base, phase) for pl in sorted(d.glob("*-PLAN.md"))]
+    ran = [pl for pl in plans if summary_of(pl).is_file()]
+    where = ", ".join(sorted({str(pl.parent.relative_to(base)) for pl in plans}))
+    if ran and not force:
+        state = "executed" if len(ran) == len(plans) else "partly executed"
+        die(f"Phase {phase} was {state} by GSD ({len(ran)} of {len(plans)} plans have a "
+            f"SUMMARY.md in {where}). Finish it with /gsd-execute-phase {phase}, or pass "
+            f"--force to queue its unticked requirements anyway.")
+    if ran:
+        print(f"Warning: --force: queuing phase {phase} although GSD ran {len(ran)} of "
+              f"{len(plans)} of its plans.", file=sys.stderr)
+    elif plans:
+        print(f"Warning: GSD has planned phase {phase} ({len(plans)} plans in {where}) but "
+              f"not executed it. The spec-writer will reuse those plans; don't also run "
+              f"/gsd-execute-phase {phase}.", file=sys.stderr)
 
     blocking = []
     for dep in p["depends"]:
@@ -254,8 +310,18 @@ def cmd_tick(args):
                 print(f"Phase {num} ({p['name']}) complete: all {len(p['requirements'])} requirements ticked.")
 
 
+def cmd_plans(args):
+    if len(args) != 1 or not re.fullmatch(ID, args[0]):
+        die("usage: gsd plans <ID>")
+    base = root()
+    for plan in sorted((base / ".planning/phases").glob("*/*-PLAN.md")):
+        if args[0] in plan_requirements(plan):
+            done = " (executed)" if summary_of(plan).is_file() else ""
+            print(f"{plan.relative_to(base)}{done}")
+
+
 def main():
-    cmds = {"backlog": cmd_backlog, "next": cmd_next, "tick": cmd_tick}
+    cmds = {"backlog": cmd_backlog, "next": cmd_next, "tick": cmd_tick, "plans": cmd_plans}
     if len(sys.argv) < 2 or sys.argv[1] not in cmds:
         die(__doc__.strip())
     cmds[sys.argv[1]](sys.argv[2:])

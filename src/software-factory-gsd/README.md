@@ -32,31 +32,74 @@ The review loop is the same; what's new is that the work comes from GSD.
   skills/factory/SKILL.md     the orchestrator, plus /factory from-gsd
   agents/                     spec-writer, builder, 4 reviewers, approver
 factory/
-  bin/gsd                     the GSD bridge: backlog, next, tick (python3, stdlib only)
+  bin/gsd                     the GSD bridge: backlog, next, tick, plans (python3, stdlib only)
   backlog.md                  the queue
   dashboard.html              the board; cards show their requirement ID
 examples/planning/            a small GSD plan, to see the shape (also the test fixture)
 tests/test_gsd.py             tests for factory/bin/gsd
 ```
 
-## Setup
+## Install in a project
 
-1. Install GSD in Claude Code, for example for this project only:
-   `npx -y @opengsd/gsd-core@latest --claude --local`.
-2. Copy `.claude/` and `factory/` into your repo root, and add `/factory/jobs/`
-   to your `.gitignore`.
-3. Make sure your `AGENTS.md` (or `CLAUDE.md`) says how to set up a fresh
-   checkout, start the dev server on a given port, and run your tests, build and
-   lint. The agents read everything repo-specific from there.
-4. Install the [`agent-browser`](https://github.com/vercel-labs/agent-browser)
-   CLI if your project has pages to look at.
+Works the same for a new or an existing project. You need Claude Code, `git`
+and `python3`. No GitHub account is needed: everything stays local.
+
+### 1. Install GSD
+
+```bash
+npx -y @opengsd/gsd-core@latest --claude --local    # this project only
+```
+
+### 2. Copy the factory in
+
+From your project's root, on a clean `main`, with `F` pointing at this folder:
+
+```bash
+F=/path/to/software-factory-gsd
+cp -R "$F/factory" .                                # bin/gsd, backlog.md, dashboard.html
+mkdir -p .claude/agents .claude/skills
+cp "$F"/.claude/agents/*.md .claude/agents/
+cp -R "$F/.claude/skills/factory" .claude/skills/
+echo "/factory/jobs/" >> .gitignore
+```
+
+Check for clashes first: the copy overwrites a `factory` skill or agents with
+the same names (`builder.md`, `approver.md` and so on) that the project already has.
+
+### 3. Prepare the project
+
+- **`AGENTS.md` (or `CLAUDE.md`)** must say how to set up a fresh checkout,
+  start the dev server on a given port, and run the tests, build and lint. Every
+  agent reads it; nothing else in the factory is specific to your project.
+- **Tailor the reviewers.** Ask Claude to adjust the four reviewers and the
+  approver's escalate list to your stack: framework, security hot spots, what
+  should always go to a human.
+- **`agent-browser`**: install the
+  [`agent-browser`](https://github.com/vercel-labs/agent-browser) CLI if the
+  project has pages to look at. The builder and the UX and UI reviewers use it.
+- **Commit** all of it on `main`.
+
+### 4. Get a GSD plan
+
+- **New to GSD:** run `/gsd-new-project` and stop once the roadmap exists (no
+  need to plan phases). On an existing codebase, accept its offer to map the
+  code first: features that already exist become "Validated" in `PROJECT.md`,
+  and only new work becomes `- [ ] **ID**` requirements, so the factory never
+  rebuilds what's there. `/gsd-onboard` is the guided alternative, and also
+  pulls in existing specs, ADRs and PRDs.
+- **Already on GSD:** keep your `.planning/` and add the next batch of work with
+  `/gsd-new-milestone`. Requirements GSD has already built are ticked, so the
+  factory skips them. See [Phases GSD has already planned](#phases-gsd-has-already-planned).
+
+Then make sure `.planning/` is committed on `main` (GSD does it by default):
+
+```bash
+git add .planning && git commit -m "Add the GSD plan"
+```
 
 ## Use it
 
 ```
-/gsd-new-project                 GSD asks about your project, writes .planning/
-                                 (stop once the roadmap exists, no need to plan phases)
-git commit .planning             agents only see what main has (GSD usually commits it itself)
 /factory from-gsd 1              queue phase 1's requirements
 /factory next                    build the next ready one; open more sessions to run several at once
 ```
@@ -112,16 +155,40 @@ and commits `.planning/REQUIREMENTS.md`. When that finishes a phase, it says so.
 Job branches never touch `.planning/`: the builder is told not to, the code
 reviewer blocks it, and the approver checks it.
 
+## Phases GSD has already planned
+
+If `/gsd-plan-phase` ran before you installed the factory, the phase has
+`*-PLAN.md` files in `.planning/phases/`. What happens depends on how far GSD got:
+
+| The phase is | `/factory from-gsd <phase>` | What to do |
+|---|---|---|
+| Planned, not executed | Warns, then queues it | Let the factory build it: the spec-writer reuses the plans (`factory/bin/gsd plans <ID>` finds them). Or run `/gsd-execute-phase` instead and queue the next phase. Not both. |
+| Partly or fully executed | Refuses | Finish it with `/gsd-execute-phase <phase>`, then queue the next phase. Its items wait on this phase's ticks, so they start once GSD is done. |
+
+Don't split one phase between the two systems. GSD ticks a requirement only when
+every plan that lists it has run, so a half-executed phase leaves requirements
+unticked that the factory would rebuild. `--force` overrides the refusal if you
+know better.
+
 ## Things to know
 
-- **Use GSD up to the roadmap only.** Don't also run `/gsd-plan-phase` or
-  `/gsd-execute-phase` on a phase the factory is building, or two systems will
-  build the same requirements.
+- **One system per phase.** Don't run `/gsd-execute-phase` on a phase the
+  factory is building, or both will build the same requirements. Planning a
+  phase with GSD first is fine: the factory reuses the plans.
 - **GSD's own end-of-phase checks don't work here.** `/gsd-verify-work` reads
   the `SUMMARY.md` files that GSD's executor writes, and the factory doesn't
   write them. Each job is checked by its reviewers and the approver instead.
 - **Requirements need checkboxes.** `factory/bin/gsd` reads `- [ ] **ID**: ...`
   lines. GSD's v2 (deferred) requirements have no checkbox, so they're never queued.
+
+- **`.planning/` must be committed.** With GSD's `commit_docs: false`,
+  `.planning/` is gitignored, job worktrees can't see it, and the factory
+  refuses to start the job. Keep the default `commit_docs: true`.
+- **One requirement is one job.** Split a requirement that is too big for one
+  branch ("User can manage their account") in `REQUIREMENTS.md` and
+  `ROADMAP.md` before running `from-gsd`.
+- **Merges need a clean `main`.** If you're editing in the same checkout, an
+  approved job waits in needs-human until you run `/factory approve <job-id>`.
 
 ## Dashboard
 

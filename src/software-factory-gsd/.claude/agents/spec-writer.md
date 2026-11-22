@@ -27,6 +27,8 @@ worktree. The job folder is in the main checkout; your one file goes there.
    `REQUIREMENTS.md` (the requirement's line and the Out of Scope table) and, in
    `ROADMAP.md`, the phase whose `**Requirements**` line lists the ID (its goal
    and success criteria).
+   Then run `cd <worktree> && factory/bin/gsd plans <ID>`. It lists the GSD
+   plans written for this requirement, if any. Read each one.
 4. The code the feature touches, in the worktree. Find the real files and
    components; don't guess at names.
 
@@ -86,3 +88,18 @@ When the job builds a GSD requirement, the plan in `.planning/` is the request:
   disagree, say so under Assumptions.
 - Never require changes to `.planning/`. The factory ticks the requirement
   itself after the merge.
+
+When `gsd plans` lists plans, GSD already planned this requirement. Use them as
+a head start, not as the spec:
+
+- Take the files, `read_first` references, task actions, `verify` commands and
+  acceptance criteria that serve this requirement. One plan can cover several
+  requirements; leave out the parts that belong to the others.
+- Check each against the code before you use it. Plans go stale; the code wins.
+- A plan marked `(executed)` already ran. Its work is on `main`: describe it in
+  Context and spec only what is still missing.
+- Turn a `checkpoint:decision` task into an Assumption, and drop
+  `checkpoint:human-verify` steps: the factory has no human in the loop until
+  the approver escalates.
+- Ignore the plan's instructions about commits, SUMMARY.md and STATE.md.
+- Cite the plans you used in Context.

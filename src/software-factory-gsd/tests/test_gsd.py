@@ -108,6 +108,45 @@ class GsdBridge(unittest.TestCase):
         self.gsd("tick", "LINK-02")
         self.assertIn("already ticked", self.gsd("tick", "LINK-02").stdout)
 
+    def plan(self, name, requirements, executed=False):
+        d = self.dir / ".planning/phases" / name.split("/")[0]
+        d.mkdir(parents=True, exist_ok=True)
+        plan = d / name.split("/")[1]
+        plan.write_text(f"---\nphase: 01-accounts\nplan: 01\n{requirements}\nwave: 1\n---\n\n<objective>x</objective>\n")
+        if executed:
+            plan.with_name(plan.name.replace("PLAN", "SUMMARY")).write_text("done\n")
+
+    def test_planned_phase_warns_and_queues(self):
+        self.plan("01-accounts/01-01-PLAN.md", "requirements: [AUTH-01, AUTH-03]")
+        res = self.gsd("backlog", "1")
+        self.assertIn("GSD has planned phase 1 (1 plans in .planning/phases/01-accounts)", res.stderr)
+        self.assertIn("AUTH-01", self.backlog())
+
+    def test_executed_phase_refuses_without_force(self):
+        self.plan("01-accounts/01-01-PLAN.md", "requirements: [AUTH-01]", executed=True)
+        self.plan("01-accounts/01-02-PLAN.md", "requirements: [AUTH-02]")
+        res = self.gsd("backlog", "1", ok=(1,))
+        self.assertIn("partly executed by GSD (1 of 2 plans", res.stderr)
+        self.assertFalse((self.dir / "factory/backlog.md").exists())
+        res = self.gsd("backlog", "1", "--force")
+        self.assertIn("--force: queuing phase 1", res.stderr)
+        self.assertIn("AUTH-02", self.backlog())
+
+    def test_other_phase_plans_do_not_count(self):
+        self.plan("02-shelf/02-01-PLAN.md", "requirements: [LINK-01]", executed=True)
+        res = self.gsd("backlog", "1")
+        self.assertNotIn("Warning", res.stderr)
+
+    def test_plans_lists_matching_plans_in_both_frontmatter_forms(self):
+        self.plan("01-accounts/01-01-PLAN.md", "requirements: [AUTH-01, AUTH-02]  # from ROADMAP")
+        self.plan("01-accounts/01-02-PLAN.md", "requirements:\n  - AUTH-02\n  - AUTH-03", executed=True)
+        self.plan("01-accounts/01-03-PLAN.md", "requirements: [AUTH-03]")
+        self.assertEqual(self.gsd("plans", "AUTH-02").stdout.splitlines(), [
+            ".planning/phases/01-accounts/01-01-PLAN.md",
+            ".planning/phases/01-accounts/01-02-PLAN.md (executed)",
+        ])
+        self.assertEqual(self.gsd("plans", "LINK-01").stdout, "")
+
     def test_errors(self):
         self.assertIn("no **Requirements** line", self.gsd("backlog", "9", ok=(1,)).stderr)
         self.assertIn("not a requirement of phase 1",
