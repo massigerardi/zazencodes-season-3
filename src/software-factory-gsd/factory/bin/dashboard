@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# Run the factory dashboard in the background.
+#
+#   factory/bin/dashboard start [port]   serve factory/ on 127.0.0.1 (default port 8000)
+#   factory/bin/dashboard stop
+#   factory/bin/dashboard status
+set -euo pipefail
+
+FACTORY="$(cd "$(dirname "$0")/.." && pwd)"
+STATE="$FACTORY/jobs"            # gitignored; the dashboard ignores files here
+PIDFILE="$STATE/.dashboard.pid"  # "<pid> <port>"
+LOG="$STATE/.dashboard.log"
+
+running() {
+  [[ -f "$PIDFILE" ]] || return 1
+  read -r PID PORT < "$PIDFILE"
+  if kill -0 "$PID" 2>/dev/null && ps -p "$PID" -o command= | grep -q http.server; then
+    return 0
+  fi
+  rm -f "$PIDFILE"               # stale: the server died or the pid was reused
+  return 1
+}
+
+url() { echo "http://localhost:$1/dashboard.html"; }
+
+case "${1:-}" in
+  start)
+    if running; then
+      echo "Already running (pid $PID): $(url "$PORT")"
+      exit 0
+    fi
+    port="${2:-8000}"
+    mkdir -p "$STATE"
+    nohup python3 -m http.server "$port" --bind 127.0.0.1 --directory "$FACTORY" \
+      > "$LOG" 2>&1 &
+    pid=$!
+    for _ in $(seq 30); do       # wait up to 3s for it to answer
+      if ! kill -0 "$pid" 2>/dev/null; then
+        echo "Dashboard failed to start:" >&2
+        tail -n 5 "$LOG" >&2
+        exit 1
+      fi
+      if curl -fs -o /dev/null "$(url "$port")"; then
+        echo "$pid $port" > "$PIDFILE"
+        echo "Started (pid $pid): $(url "$port")"
+        exit 0
+      fi
+      sleep 0.1
+    done
+    kill "$pid" 2>/dev/null || true
+    echo "Dashboard did not answer on port $port; stopped it. Log: $LOG" >&2
+    exit 1
+    ;;
+  stop)
+    if running; then
+      kill "$PID"
+      rm -f "$PIDFILE"
+      echo "Stopped (pid $PID)."
+    else
+      echo "Not running."
+    fi
+    ;;
+  status)
+    if running; then
+      echo "Running (pid $PID): $(url "$PORT")"
+    else
+      echo "Not running."
+      exit 3
+    fi
+    ;;
+  *)
+    echo "Usage: $(basename "$0") start [port] | stop | status" >&2
+    exit 2
+    ;;
+esac
