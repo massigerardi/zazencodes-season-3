@@ -28,9 +28,7 @@ The review loop is the same; what's new is that the work comes from GSD.
 ## What's in here
 
 ```
-.claude/
-  skills/factory/SKILL.md     the orchestrator, plus /factory from-gsd
-  agents/                     spec-writer, builder, 4 reviewers, approver
+BUILD_PROMPT.md               generates the skill and agents (.claude/) in your project
 factory/
   bin/gsd                     the GSD bridge: backlog, next, tick, plans (python3, stdlib only)
   bin/dashboard               start, stop or check the dashboard server
@@ -57,17 +55,32 @@ From your project's root, on a clean `main`, with `F` pointing at this folder:
 
 ```bash
 F=/path/to/software-factory-gsd
-cp -R "$F/factory" .                                # bin/gsd, backlog.md, dashboard.html
-mkdir -p .claude/agents .claude/skills
-cp "$F"/.claude/agents/*.md .claude/agents/
-cp -R "$F/.claude/skills/factory" .claude/skills/
+cp -R "$F/factory" .                                # bin/, backlog.md, dashboard.html
 echo "/factory/jobs/" >> .gitignore
 ```
 
-Check for clashes first: the copy overwrites a `factory` skill or agents with
-the same names (`builder.md`, `approver.md` and so on) that the project already has.
+### 3. Generate the skill and agents
 
-### 3. Prepare the project
+The orchestrator skill and the seven agents live in your project's `.claude/`.
+Claude generates them from
+[v1's](https://github.com/zazencodes/zazencodes-season-3/tree/main/src/software-factory-claude-code/.claude) skill and agents plus the GSD
+changes in `BUILD_PROMPT.md`. From your project's root:
+
+```bash
+claude "$(cat "$F/BUILD_PROMPT.md")"
+```
+
+Or open Claude Code in the project and paste the file's contents. You get
+`.claude/skills/factory/SKILL.md` and `.claude/agents/` (spec-writer, builder,
+four reviewers, approver), and a summary of the changes. Nothing is committed.
+
+- **Base branch:** run it on the branch you integrate on. If that isn't `main`
+  (for example `development`), the generated files use it everywhere v1 says
+  `main`. Check that the summary names the right branch.
+- **Clashes:** this overwrites a `factory` skill or agents with the same names
+  (`builder.md`, `approver.md` and so on) that the project already has.
+
+### 4. Prepare the project
 
 - **`AGENTS.md` (or `CLAUDE.md`)** must say how to set up a fresh checkout,
   start the dev server on a given port, and run the tests, build and lint. Every
@@ -80,7 +93,7 @@ the same names (`builder.md`, `approver.md` and so on) that the project already 
   project has pages to look at. The builder and the UX and UI reviewers use it.
 - **Commit** all of it on `main`.
 
-### 4. Get a GSD plan
+### 5. Get a GSD plan
 
 - **New to GSD:** run `/gsd-new-project` and stop once the roadmap exists (no
   need to plan phases). On an existing codebase, accept its offer to map the
