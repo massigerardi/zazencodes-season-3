@@ -33,6 +33,7 @@ The review loop is the same; what's new is that the work comes from GSD.
   agents/                     spec-writer, builder, 4 reviewers, approver
 factory/
   bin/gsd                     the GSD bridge: backlog, next, tick, plans (python3, stdlib only)
+  bin/dashboard               start, stop or check the dashboard server
   backlog.md                  the queue
   dashboard.html              the board; cards show their requirement ID
 examples/planning/            a small GSD plan, to see the shape (also the test fixture)
@@ -259,10 +260,16 @@ switch systems at any phase boundary.
 ## Dashboard
 
 ```bash
-cd factory && python3 -m http.server
+factory/bin/dashboard start          # serves factory/ on 127.0.0.1:8000, in the background
+factory/bin/dashboard start 8100     # another port
+factory/bin/dashboard status         # exit 3 when not running
+factory/bin/dashboard stop
 ```
 
-Open <http://localhost:8000/dashboard.html>.
+`start` prints the URL to open, <http://localhost:8000/dashboard.html> by
+default. The board polls `factory/jobs/` and updates as jobs move. The server's
+pid and log go to `factory/jobs/.dashboard.pid` and `.dashboard.log`, which are
+gitignored; the log is overwritten on each start.
 
 ## Tests
 
