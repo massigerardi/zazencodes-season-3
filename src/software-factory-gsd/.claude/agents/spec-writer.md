@@ -27,6 +27,9 @@ worktree. The job folder is in the main checkout; your one file goes there.
    `REQUIREMENTS.md` (the requirement's line and the Out of Scope table) and, in
    `ROADMAP.md`, the phase whose `**Requirements**` line lists the ID (its goal
    and success criteria).
+   If that phase has a `.planning/phases/<NN>-*/<NN>-CONTEXT.md` (written by
+   `/gsd-discuss-phase`), read it: its `<decisions>` are the user's locked
+   choices for the phase, and its canonical refs are docs to read too.
    Then run `cd <worktree> && factory/bin/gsd plans <ID>`. It lists the GSD
    plans written for this requirement, if any. Read each one.
 4. The code the feature touches, in the worktree. Find the real files and
@@ -84,8 +87,10 @@ When the job builds a GSD requirement, the plan in `.planning/` is the request:
 - Under Out of scope, name the other requirements of the phase a builder might
   drift into (each is its own job), and any row of the Out of Scope table that
   touches this feature.
-- Follow `PROJECT.md`'s constraints. Where the requirement and the code
-  disagree, say so under Assumptions.
+- Follow `PROJECT.md`'s constraints and the decisions in the phase's
+  CONTEXT.md; carry the ones that apply to this requirement into the spec. Never
+  turn a locked decision into an Assumption or a different choice. Where the
+  requirement and the code disagree, say so under Assumptions.
 - Never require changes to `.planning/`. The factory ticks the requirement
   itself after the merge.
 

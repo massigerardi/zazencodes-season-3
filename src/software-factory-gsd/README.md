@@ -149,6 +149,12 @@ becomes the first acceptance criterion, the phase's matching success criteria
 become the rest, and the phase's other requirements go under Out of scope, since
 each is its own job. `PROJECT.md` supplies the constraints.
 
+To settle a phase's gray areas first, run `/gsd-discuss-phase <phase>` before
+`/factory from-gsd <phase>`. It only asks you questions and commits the
+answers to `.planning/phases/<NN>-*/<NN>-CONTEXT.md`: no code, no plans. The
+spec-writer reads that file and treats its decisions as fixed. Skip `--auto`
+and `--chain`, which carry on into planning and execution.
+
 When a job merges, the orchestrator runs `factory/bin/gsd tick <ID>`. That ticks
 the checkbox, marks the requirement's row in the Traceability table `Complete`,
 and commits `.planning/REQUIREMENTS.md`. When that finishes a phase, it says so.
@@ -234,7 +240,8 @@ switch systems at any phase boundary.
 
 - **One system per phase.** Don't run `/gsd-execute-phase` on a phase the
   factory is building, or both will build the same requirements. Planning a
-  phase with GSD first is fine: the factory reuses the plans.
+  phase with GSD first is fine: the factory reuses the plans. So is discussing
+  it with `/gsd-discuss-phase`: the spec-writer follows its decisions.
 - **GSD's own end-of-phase checks don't work here.** `/gsd-verify-work` reads
   the `SUMMARY.md` files that GSD's executor writes, and the factory doesn't
   write them. Each job is checked by its reviewers and the approver instead.
