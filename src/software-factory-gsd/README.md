@@ -281,7 +281,9 @@ factory/bin/dashboard stop
 
 The page and its browser tab are titled with the project's folder name.
 `start` prints the URL to open, <http://localhost:8000/dashboard.html> by
-default. The board polls `factory/jobs/` and updates as jobs move. The server's
+default. The board polls `factory/jobs/` and updates as jobs move. Its first
+column, Backlog, lists the unchecked items of `factory/backlog.md` in queue
+order as dashed cards, with any `(after ...)` as written. The server's
 pid and log go to `factory/jobs/.dashboard.pid` and `.dashboard.log`, which are
 gitignored; the log is overwritten on each start.
 

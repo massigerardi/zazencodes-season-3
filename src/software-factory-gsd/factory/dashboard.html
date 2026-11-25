@@ -51,7 +51,7 @@
 
   /* Board */
   .board {
-    display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px;
+    display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px;
     padding: 20px 32px 40px; align-items: start;
   }
   .col { min-width: 0; }
@@ -59,7 +59,7 @@
     display: flex; align-items: center; gap: 8px; padding: 0 2px 10px;
     border-bottom: 1px solid var(--line); margin-bottom: 12px; position: relative;
   }
-  .col-head h2 { margin: 0; font-size: 13px; font-weight: 600; }
+  .col-head h2 { margin: 0; font-size: 13px; font-weight: 600; white-space: nowrap; }
   .col-head .who { font-size: 11px; color: var(--faint); font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .col-head .count {
     margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--muted);
@@ -130,6 +130,18 @@
     font-family: var(--mono); font-size: 10.5px; color: var(--muted); line-height: 1.6;
     overflow-wrap: anywhere;
   }
+
+  /* Queued backlog items: no job yet, so a dashed outline and nothing to open. */
+  .card.queued {
+    cursor: default; background: none; border: 1px dashed var(--faint);
+  }
+  .card.queued:hover { background: none; transform: none; }
+  .card.queued .feature { color: var(--muted); margin: 0; overflow-wrap: anywhere; }
+  .card.queued .after {
+    margin-top: 6px; font-family: var(--mono); font-size: 11px; color: var(--faint);
+    overflow-wrap: anywhere;
+  }
+  .card.queued .req + .num { margin-left: auto; }
 
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
   @keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
@@ -285,6 +297,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 
 let jobs = []
+let backlog = []
 let lastRender = ''
 const roundCache = new Map() // "<job>/<n>" -> verdicts of a finished round
 let openJobId = null
@@ -305,7 +318,55 @@ async function showProject() {
   document.querySelector('h1').textContent = document.title
 }
 
+// ---- Backlog -------------------------------------------------------------
+
+// Unchecked lines of factory/backlog.md, in queue order. Checked ones are
+// already on the board as jobs. A project may not have the file yet.
+async function loadBacklog() {
+  const res = await fetch('backlog.md', { cache: 'no-store' })
+  if (res.status === 404) return []
+  if (!res.ok) throw new Error(`backlog.md: HTTP ${res.status}`)
+  return (await res.text()).split('\n').flatMap((line) => {
+    const item = line.trimEnd().match(/^- \[ \] (.*)$/)
+    if (!item) return []
+    const after = item[1].match(/\(after ([^)]*)\)/)
+    const phase = item[1].match(/\[phase ([^\]]*)\]/)
+    const text = item[1].replace(/\s*(\(after [^)]*\)|\[phase [^\]]*\])/g, '').trim()
+    const req = text.match(/^([A-Z][A-Z0-9]*-\d+):\s*(.*)$/)
+    return [{
+      requirement: req ? req[1] : null,
+      feature: req ? req[2] : text,
+      phase: phase ? phase[1] : null,
+      after: after ? after[1] : null,
+    }]
+  })
+}
+
+function queuedCard(item) {
+  const top = [
+    item.requirement ? `<span class="req" title="GSD requirement">${esc(item.requirement)}</span>` : '',
+    item.phase ? `<span class="num">phase ${esc(item.phase)}</span>` : '',
+  ].join('')
+  return `
+    <div class="card queued">
+      ${top ? `<div class="card-top">${top}</div>` : ''}
+      <p class="feature">${esc(item.feature)}</p>
+      ${item.after ? `<div class="after">after ${esc(item.after)}</div>` : ''}
+    </div>`
+}
+
 // ---- Board ---------------------------------------------------------------
+
+function column(label, who, cls, cards) {
+  return `
+    <section class="col ${cls}">
+      <div class="col-head">
+        <h2>${label}</h2><span class="who">${who}</span>
+        <span class="count">${cards.length || ''}</span>
+      </div>
+      ${cards.join('') || '<div class="empty">—</div>'}
+    </section>`
+}
 
 function verdictOf(text) {
   const m = text.split('\n')[0].trim().match(/^VERDICT:\s*(PASS|CHANGES)$/)
@@ -378,15 +439,9 @@ async function render() {
     if (!byStage[job.stage]) problems.push(`Job ${job.id} has unknown stage "${job.stage}"`)
     else byStage[job.stage].push(card(job, pasts[i]))
   })
-  // Newest first within a column.
-  const html = STAGES.map((s) => `
-    <section class="col ${s.cls || ''}">
-      <div class="col-head">
-        <h2>${s.label}</h2><span class="who">${s.who}</span>
-        <span class="count">${byStage[s.key].length || ''}</span>
-      </div>
-      ${byStage[s.key].reverse().join('') || '<div class="empty">—</div>'}
-    </section>`).join('')
+  // The backlog keeps its queue order; job columns show the newest first.
+  const html = column('Backlog', 'backlog.md', '', backlog.map(queuedCard)) +
+    STAGES.map((s) => column(s.label, s.who, s.cls || '', byStage[s.key].reverse())).join('')
   const banner = problems.map((p) => `<div class="banner">${esc(p)}</div>`).join('')
   if (html + banner !== lastRender) {
     lastRender = html + banner
@@ -398,7 +453,7 @@ async function render() {
 async function poll() {
   const status = $('status')
   try {
-    jobs = await loadJobs()
+    ;[jobs, backlog] = await Promise.all([loadJobs(), loadBacklog()])
     await render()
     if (openJobId) await refreshDrawer()
     status.className = 'status'
