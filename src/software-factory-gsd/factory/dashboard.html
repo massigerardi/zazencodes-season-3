@@ -297,6 +297,14 @@ async function fetchText(url) {
   return res.text()
 }
 
+// factory/bin/dashboard writes the project's folder name; without it the
+// generic title stays.
+async function showProject() {
+  const name = (await fetchText('jobs/.project')).trim()
+  document.title = `${name} · Software factory`
+  document.querySelector('h1').textContent = document.title
+}
+
 // ---- Board ---------------------------------------------------------------
 
 function verdictOf(text) {
@@ -598,6 +606,7 @@ function markdown(src) {
   return html
 }
 
+showProject()
 poll()
 setInterval(poll, POLL_MS)
 </script>
