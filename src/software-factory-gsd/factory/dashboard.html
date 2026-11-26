@@ -88,6 +88,12 @@
                 0 8px 24px -12px color-mix(in srgb, var(--human) 60%, transparent);
   }
   .card.merged { opacity: .72; }
+  /* Merged jobs are done: name, requirement and a two-line description. */
+  .card.merged .req { margin-left: auto; }
+  .card.merged .feature {
+    margin: 0; color: var(--muted); display: -webkit-box;
+    -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
   .card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
   .num { font-family: var(--mono); font-size: 12px; color: var(--muted); }
   .card-top .num { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -409,14 +415,27 @@ function chips(n, verdicts, waiting) {
   return `<div class="round"><span class="r">R${n}</span>${cells}</div>`
 }
 
+function mergedCard(job) {
+  const name = job.id.split('-').slice(1).join('-')
+  return `
+    <button class="card merged" data-job="${esc(job.id)}">
+      <div class="card-top">
+        <span class="num" title="${esc(job.id)}">${esc(name)}</span>
+        ${job.requirement ? `<span class="req" title="GSD requirement">${esc(job.requirement)}</span>` : ''}
+      </div>
+      <p class="feature" title="${esc(job.feature)}">${esc(job.feature)}</p>
+    </button>`
+}
+
 function card(job, past) {
+  if (job.stage === 'merged') return mergedCard(job)
   const live = LIVE.has(job.stage)
   const human = job.stage === 'needs-human'
   const rows = past.map((v, i) => chips(i + 1, v, false))
   if (job.round > 0) rows.push(chips(job.round, job.reviews, job.stage === 'review'))
   const [num, ...slug] = job.id.split('-')
   return `
-    <button class="card ${live ? 'live' : ''} ${human ? 'human' : ''} ${job.stage === 'merged' ? 'merged' : ''}"
+    <button class="card ${live ? 'live' : ''} ${human ? 'human' : ''}"
             data-job="${esc(job.id)}">
       <div class="card-top">
         ${live ? '<span class="pulse" aria-label="running"></span>' : ''}
@@ -434,7 +453,8 @@ function card(job, past) {
 async function render() {
   const problems = []
   const byStage = Object.fromEntries(STAGES.map((s) => [s.key, []]))
-  const pasts = await Promise.all(jobs.map(pastRounds))
+  // Merged cards show no review rounds, so don't fetch them.
+  const pasts = await Promise.all(jobs.map((j) => j.stage === 'merged' ? [] : pastRounds(j)))
   jobs.forEach((job, i) => {
     if (!byStage[job.stage]) problems.push(`Job ${job.id} has unknown stage "${job.stage}"`)
     else byStage[job.stage].push(card(job, pasts[i]))
