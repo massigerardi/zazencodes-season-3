@@ -28,7 +28,9 @@ The review loop is the same; what's new is that the work comes from GSD.
 ## What's in here
 
 ```
-BUILD_PROMPT.md               generates the skill and agents (.claude/) in your project
+.claude/                      the Claude Code skill and agents, ready to copy
+.opencode/                    the OpenCode command, agents and permissions, ready to copy
+install.sh                    copies the factory into a project
 factory/
   bin/gsd                     the GSD bridge: backlog, next, tick, plans (python3, stdlib only)
   bin/dashboard               start, stop or check the dashboard server
@@ -41,7 +43,8 @@ tests/test_gsd.py             tests for factory/bin/gsd
 ## Install in a project
 
 Works the same for a new or an existing project. You need Claude Code, `git`
-and `python3`. No GitHub account is needed: everything stays local.
+and `python3`. No GitHub account is needed: everything stays local. To use
+OpenCode instead, see [OpenCode](#opencode).
 
 ### 1. Install GSD
 
@@ -51,36 +54,28 @@ npx -y @opengsd/gsd-core@latest --claude --local    # this project only
 
 ### 2. Copy the factory in
 
-From your project's root, on a clean `main`, with `F` pointing at this folder:
+On a clean `main` in your project, run the install script from this folder:
 
 ```bash
-F=/path/to/software-factory-gsd
-cp -R "$F/factory" .                                # bin/, backlog.md, dashboard.html
-echo "/factory/jobs/" >> .gitignore
+cd /path/to/software-factory-gsd
+./install.sh /path/to/your/project
 ```
 
-### 3. Generate the skill and agents
+It copies `factory/` (bin/, backlog.md, dashboard.html), the orchestrator skill
+to `.claude/skills/factory/` and the seven agents (spec-writer, builder, four
+reviewers, approver) to `.claude/agents/`, and adds `/factory/jobs/` to
+`.gitignore`. No model runs and nothing is generated or committed.
 
-The orchestrator skill and the seven agents live in your project's `.claude/`.
-Claude generates them from
-[v1's](https://github.com/zazencodes/zazencodes-season-3/tree/main/src/software-factory-claude-code/.claude) skill and agents plus the GSD
-changes in `BUILD_PROMPT.md`. From your project's root:
+Run it again to update an installed project's scripts and dashboard. It keeps
+the project's `factory/backlog.md`.
 
-```bash
-claude "$(cat "$F/BUILD_PROMPT.md")"
-```
+- **Base branch:** the files say `main`. If you integrate on another branch (for
+  example `development`), replace it in `.claude/` after installing.
+- **Clashes:** it stops without copying anything if the project has its own
+  `factory` skill, or agents with the same names (`builder.md`, `approver.md`
+  and so on), that differ from these.
 
-Or open Claude Code in the project and paste the file's contents. You get
-`.claude/skills/factory/SKILL.md` and `.claude/agents/` (spec-writer, builder,
-four reviewers, approver), and a summary of the changes. Nothing is committed.
-
-- **Base branch:** run it on the branch you integrate on. If that isn't `main`
-  (for example `development`), the generated files use it everywhere v1 says
-  `main`. Check that the summary names the right branch.
-- **Clashes:** this overwrites a `factory` skill or agents with the same names
-  (`builder.md`, `approver.md` and so on) that the project already has.
-
-### 4. Prepare the project
+### 3. Prepare the project
 
 - **`AGENTS.md` (or `CLAUDE.md`)** must say how to set up a fresh checkout,
   start the dev server on a given port, and run the tests, build and lint. Every
@@ -93,7 +88,7 @@ four reviewers, approver), and a summary of the changes. Nothing is committed.
   project has pages to look at. The builder and the UX and UI reviewers use it.
 - **Commit** all of it on `main`.
 
-### 5. Get a GSD plan
+### 4. Get a GSD plan
 
 - **New to GSD:** run `/gsd-new-project` and stop once the roadmap exists (no
   need to plan phases). On an existing codebase, accept its offer to map the
@@ -125,6 +120,100 @@ Other commands, unchanged from v1:
 /factory approve <job-id>        merge a needs-human job (also ticks its requirement)
 /factory rework <job-id> <note>  send a needs-human job back to the builder
 ```
+
+## OpenCode
+
+The factory also runs on [OpenCode](https://opencode.ai), with every agent on
+the free **Big Pickle** model (`opencode/big-pickle`). It was built for OpenCode
+1.19.3; other versions may name tools and settings differently, so check
+`opencode --version`. Background and sources:
+[`opencode-variant.md`](opencode-variant.md).
+
+### Install
+
+```bash
+npx -y @opengsd/gsd-core@latest --opencode --local   # in your project
+cd /path/to/software-factory-gsd
+./install.sh --opencode /path/to/your/project
+```
+
+The script copies `factory/` and these ready-made files into your project. No
+model runs and nothing is generated:
+
+```
+.opencode/commands/factory.md    the orchestrator (/factory)
+.opencode/agents/                spec-writer, builder, four reviewers, approver
+.opencode/opencode.json          allows the job worktrees, hides the Claude Code skill
+```
+
+It stops without copying anything if the project has its own file with one of
+those command or agent names. If the project already has
+`.opencode/opencode.json`, the script prints the entries to add to it.
+
+Then follow steps 3 and 4 above and commit `.opencode/` with the rest. The
+commands are the same: `/factory from-gsd 1`, `/factory next` and so on.
+
+- **Base branch:** the files say `main`. If you integrate on another branch,
+  replace it in `.opencode/` after installing.
+- **Both tools:** a project can have `.claude/` and `.opencode/` and run the
+  factory from either, one tool per job. The two sets are maintained separately,
+  so make a change to the factory in both.
+
+### What's different
+
+- **Big Pickle can't view images.** The UX and UI reviewers judge pages from the
+  accessibility snapshot, element boxes and computed styles, and say in their
+  review that nobody looked. Check visual changes yourself, or give
+  `reviewer-ux` and `reviewer-ui` a `model:` that accepts images.
+- **Your code goes to a free preview model.** The
+  [OpenCode Zen docs](https://opencode.ai/docs/zen/) say data collected during
+  Big Pickle's free period may be used to improve the model. Don't use it on
+  code you can't share. To switch, change `model:` in `.opencode/`.
+- **Dashboard chips fill in together.** The orchestrator gets the reviewers'
+  results back from its `task` calls, then writes the verdicts. The stage
+  captions on the board still say `opus`.
+- **Resuming the builder** uses its task id, saved as `builder_task` in
+  `job.json`.
+- **Edit limits are enforced.** Reviewers, spec-writer and approver can only use
+  the edit tools under `factory/jobs/`; the builder also in worktrees, never in
+  `.planning/`. These limits don't cover shell commands.
+
+### The free usage limit
+
+Big Pickle has a free usage limit, and one small job can be enough to reach it
+when other use has counted toward it. A job that hits it may stall without a
+word: the screen stops at the last step and the process stays alive. The error,
+`Free usage limit reached`, shows up in the log:
+
+```bash
+grep "Free usage limit" ~/.local/share/opencode/log/opencode.log | tail -3
+```
+
+So don't leave jobs unattended and assume they finish.
+
+### Recover a stalled job
+
+1. Stop the stalled OpenCode process, and wait until the limit has reset (the
+   commands below need a model too), or change `model:` in `.opencode/`.
+2. Look at how far it got: `stage` in `factory/jobs/<job-id>/job.json`, the
+   files beside it, and `git log --oneline main`.
+3. Pick the matching case. `/factory approve` and `/factory rework` only accept
+   a `needs-human` job, so set `"stage": "needs-human"` in `job.json` first.
+
+| The job stalled | What to do |
+|---|---|
+| Before `spec.md` was complete | Start over (below). |
+| With a spec, before the approver wrote `APPROVE` | `/factory rework <job-id> Finish the build from spec.md and any review findings.` It goes through review and approval again. |
+| After `decision.md` says `APPROVE`, with no merge on `main` | `/factory approve <job-id>` |
+| After `Merge factory/<job-id>` is on `main` | Don't approve again. Finish by hand: `factory/bin/gsd tick <ID>` (if the job has a requirement), commit `.planning/REQUIREMENTS.md`, `git worktree remove <worktree>`, `git branch -d factory/<job-id>`, and set `"stage": "merged"`. |
+
+`/factory approve` merges without reviewing anything, so use it only when
+`decision.md` says `APPROVE` or you have checked the branch yourself.
+
+To start over, run `git worktree remove --force <worktree>` and
+`git branch -D factory/<job-id>` (both discard the job's work; skip whichever
+doesn't exist), delete `factory/jobs/<job-id>/`, and in `factory/backlog.md`
+change the item back to `- [ ]` and remove its `→` note.
 
 ## How requirements flow
 
@@ -279,8 +368,11 @@ factory/bin/dashboard status         # exit 3 when not running
 factory/bin/dashboard stop
 ```
 
+The page and its browser tab are titled with the project's folder name.
 `start` prints the URL to open, <http://localhost:8000/dashboard.html> by
-default. The board polls `factory/jobs/` and updates as jobs move. The server's
+default. The board polls `factory/jobs/` and updates as jobs move. Its first
+column, Backlog, lists the unchecked items of `factory/backlog.md` in queue
+order as dashed cards, with any `(after ...)` as written. The server's
 pid and log go to `factory/jobs/.dashboard.pid` and `.dashboard.log`, which are
 gitignored; the log is overwritten on each start.
 

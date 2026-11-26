@@ -25,12 +25,13 @@ url() { echo "http://localhost:$1/dashboard.html"; }
 
 case "${1:-}" in
   start)
+    mkdir -p "$STATE"
+    basename "$(dirname "$FACTORY")" > "$STATE/.project"   # the page's title
     if running; then
       echo "Already running (pid $PID): $(url "$PORT")"
       exit 0
     fi
     port="${2:-8000}"
-    mkdir -p "$STATE"
     nohup python3 -m http.server "$port" --bind 127.0.0.1 --directory "$FACTORY" \
       > "$LOG" 2>&1 &
     pid=$!
