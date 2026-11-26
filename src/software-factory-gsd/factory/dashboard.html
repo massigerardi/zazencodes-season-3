@@ -51,7 +51,7 @@
 
   /* Board */
   .board {
-    display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px;
+    display: grid; gap: 12px; /* flex above 1100px, see Foldable column */
     padding: 20px 32px 40px; align-items: start;
   }
   .col { min-width: 0; }
@@ -74,6 +74,29 @@
   .col.human h2 { color: var(--human); }
   .col.merged-col h2 { color: var(--merged); }
   .empty { color: var(--faint); font-size: 12px; padding: 4px 2px; }
+
+  /* Foldable column: the whole header toggles it. */
+  .fold {
+    display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0;
+    background: none; cursor: pointer; font-weight: inherit; color: inherit;
+  }
+  .fold::after { content: ""; position: absolute; inset: 0; }
+  .fold:focus-visible { outline: none; }
+  .col-head:has(.fold:focus-visible) { outline: 2px solid var(--active); outline-offset: 4px; border-radius: 4px; }
+  .fold .chev { color: var(--faint); transform: rotate(90deg); transition: transform .15s; }
+  .folded .fold .chev { transform: none; }
+  .col-head:has(.fold):hover .chev { color: var(--text); }
+  @media (min-width: 1101px) {
+    /* A folded column shrinks to a strip with its name running down it;
+       the open columns share the rest. */
+    .board { display: flex; align-items: flex-start; }
+    .board > .col { flex: 1 1 0; }
+    .board > .col.folded { flex: 0 0 36px; }
+    .col.folded .col-head { flex-direction: column; align-items: center; gap: 10px; }
+    .col.folded .col-head h2 { writing-mode: vertical-rl; }
+    .col.folded .who, .col.folded .chev { display: none; }
+    .col.folded .count { margin-left: 0; order: -1; }
+  }
 
   /* Cards */
   .card {
@@ -296,7 +319,7 @@ const STAGES = [
   { key: 'review', label: 'Review', who: 'sec · ux · ui · code' },
   { key: 'approve', label: 'Approve', who: 'approver · opus' },
   { key: 'needs-human', label: 'Manual verification', who: 'approve · rework', cls: 'human' },
-  { key: 'merged', label: 'Merged', who: 'main', cls: 'merged-col' },
+  { key: 'merged', label: 'Merged', who: 'main', cls: 'merged-col', fold: true },
 ]
 const LIVE = new Set(['spec', 'build', 'review', 'approve'])
 const REVIEWERS = [['security', 'sec'], ['ux', 'ux'], ['ui', 'ui'], ['code', 'code']]
@@ -310,6 +333,9 @@ let backlog = []
 let lastRender = ''
 const roundCache = new Map() // "<job>/<n>" -> verdicts of a finished round
 let openJobId = null
+const FOLD_KEY = 'factory.folded'
+let folded = new Set() // keys of folded columns
+try { folded = new Set(JSON.parse(localStorage.getItem(FOLD_KEY)) || []) } catch {}
 let openPath = null
 let openText = null
 
@@ -366,15 +392,28 @@ function queuedCard(item) {
 
 // ---- Board ---------------------------------------------------------------
 
-function column(label, who, cls, cards) {
+// A column with a foldKey can be folded down to its header.
+function column(label, who, cls, cards, foldKey = null) {
+  const shut = foldKey !== null && folded.has(foldKey)
+  const title = foldKey !== null
+    ? `<button class="fold" data-fold="${foldKey}" aria-expanded="${!shut}" title="${shut ? 'Unfold' : 'Fold'} ${label}">
+         ${label}<span class="chev" aria-hidden="true">›</span></button>`
+    : label
   return `
-    <section class="col ${cls}">
+    <section class="col ${cls} ${shut ? 'folded' : ''}">
       <div class="col-head">
-        <h2>${label}</h2><span class="who">${who}</span>
+        <h2>${title}</h2><span class="who">${who}</span>
         <span class="count">${cards.length || ''}</span>
       </div>
-      ${cards.join('') || '<div class="empty">—</div>'}
+      ${shut ? '' : cards.join('') || '<div class="empty">—</div>'}
     </section>`
+}
+
+async function toggleFold(key) {
+  if (!folded.delete(key)) folded.add(key)
+  try { localStorage.setItem(FOLD_KEY, JSON.stringify([...folded])) } catch {}
+  await render()
+  document.querySelector(`[data-fold="${key}"]`)?.focus() // the re-render replaced the button
 }
 
 function verdictOf(text) {
@@ -463,8 +502,8 @@ async function render() {
     else byStage[job.stage].push(card(job, pasts[i]))
   })
   // The backlog keeps its queue order; job columns show the newest first.
-  const html = column('Backlog', 'backlog.md', '', backlog.map(queuedCard)) +
-    STAGES.map((s) => column(s.label, s.who, s.cls || '', byStage[s.key].reverse())).join('')
+  const html = column('Backlog', 'backlog.md', '', backlog.map(queuedCard), 'backlog') +
+    STAGES.map((s) => column(s.label, s.who, s.cls || '', byStage[s.key].reverse(), s.fold ? s.key : null)).join('')
   const banner = problems.map((p) => `<div class="banner">${esc(p)}</div>`).join('')
   if (html + banner !== lastRender) {
     lastRender = html + banner
@@ -594,6 +633,8 @@ function closeDrawer() {
 }
 
 document.addEventListener('click', (e) => {
+  const foldEl = e.target.closest('[data-fold]')
+  if (foldEl) return toggleFold(foldEl.dataset.fold)
   const cardEl = e.target.closest('[data-job]')
   if (cardEl) return openDrawer(cardEl.dataset.job)
   const fileEl = e.target.closest('[data-file]')
