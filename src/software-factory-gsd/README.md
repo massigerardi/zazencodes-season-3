@@ -66,6 +66,9 @@ to `.claude/skills/factory/` and the seven agents (spec-writer, builder, four
 reviewers, approver) to `.claude/agents/`, and adds `/factory/jobs/` to
 `.gitignore`. No model runs and nothing is generated or committed.
 
+Run it again to update an installed project's scripts and dashboard. It keeps
+the project's `factory/backlog.md`.
+
 - **Base branch:** the files say `main`. If you integrate on another branch (for
   example `development`), replace it in `.claude/` after installing.
 - **Clashes:** it stops without copying anything if the project has its own
